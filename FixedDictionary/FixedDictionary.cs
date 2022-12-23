@@ -17,6 +17,7 @@
         private struct Entry
         {
             public int hashCode;    // Lower 31 bits of hash code, -1 if unused
+            public int bucket; //注意：这个值只是我用来调试用的，后续可以删除掉
             public int next;        // Index of next entry, -1 if last
             public TKey key;           // Key of entry
             public TValue value;         // Value of entry
@@ -203,8 +204,7 @@
             if (count > 0)
             {
                 //Array.Clear(entries, 0, count);
-                for (int i = 0; i < entries.Length; i++)  
-                    entries[i].hashCode = entries[i].next = -1;
+                for (int i = 0; i < entries.Length; i++)  entries[i].hashCode = entries[i].bucket = entries[i].next = -1;
                 freeList = -1;
                 count = 0;
                 freeCount = 0;
@@ -309,7 +309,8 @@
             if (entries != null)
             {
                 int hashCode = comparer.GetHashCode(key) & 0x7FFFFFFF;
-                for (int i = hashCode % entries.Length; i >= 0; i = entries[i].next)
+                int bucket = hashCode % entries.Length;
+                for (int i = bucket; i >= 0; i = entries[i].next)
                 {
                     if (entries[i].hashCode == hashCode && comparer.Equals(entries[i].key, key)) return i;
                 }
@@ -320,7 +321,7 @@
         private void Initialize(int capacity)
         {
             int size = HashHelpers.GetPrime(capacity);
-            entries = Enumerable.Repeat(new Entry { hashCode = -1, next = -1 }, size).ToArray();
+            entries = Enumerable.Repeat(new Entry { hashCode = -1, bucket = -1, next = -1 }, size).ToArray();
             count = 0;
             freeList = -1;
             freeCount = 0;
@@ -342,8 +343,8 @@
             int collisionCount = 0;
 #endif
             //先尝试找，找不到再插入
-            int last = -1;
-            for (int i = targetBucket; i >= 0; last = i, i = entries[i].next)
+            int prev = -1;//上一个元素
+            for (int i = targetBucket; i >= 0; prev = i, i = entries[i].next)
             {
                 if (entries[i].hashCode == hashCode && comparer.Equals(entries[i].key, key))
                 {
@@ -356,7 +357,7 @@
                     return;
                 }
             }
-            //要插入 看看是否有空闲位置
+            //要插入 看看是否有空闲位置。没位置先resize
             if (freeCount <= 0 && count == entries.Length)
             {
                 Resize();
@@ -366,32 +367,41 @@
 
             if (entries[targetBucket].hashCode < 0)
             {
-                //1.hashcode为空说明没有元素，直接插入即可(但是他会在freeCount里面)
-                if(targetBucket <= count - 1)
+                //1.hashcode为空说明没有元素，此时又分为两种情况
+                //  a.此bucket+1>count，count扩容=bucket+1，同时要更新freeCount和freeList
+                //  b.否则，说明此bucket在freeList链表中，要从freeCount中移除，但是count不用变了
+                if(targetBucket+1 > count)
                 {
-                    if (targetBucket == freeList)
-                        freeList = entries[targetBucket].next;
-                    else
+                    for(int i = count; i < targetBucket; i++)
                     {
-                        int freeLast = -1;
-                        for (int i = freeList; i >= 0; freeLast = i, i = entries[i].next)
-                        {
-                            if(entries[i].next == targetBucket)
-                            {
-                                entries[freeLast].next = entries[i].next;
-                                break;
-                            }
-                        }
+                        entries[i].next = freeList;
+                        freeList = i;
+                        freeCount++;
                     }
-                    freeCount--;
+                    count = targetBucket + 1;
                 }
                 else
                 {
-
-                    count = targetBucket + 1;
+                    int prevFree = -1;//上一个元素
+                    for (int i = freeList; i >= 0; prevFree = i, i = entries[i].next)
+                    {
+                        if(targetBucket == i)
+                        {
+                            if(prevFree > 0)
+                            {
+                                entries[prevFree].next = entries[i].next;
+                            }
+                            else
+                            {
+                                freeList = entries[i].next;
+                            }
+                            freeCount--;
+                            break;
+                        }
+                    }
                 }
-
                 entries[targetBucket].hashCode = hashCode;
+                entries[targetBucket].bucket = targetBucket;
                 entries[targetBucket].next = -1;
                 entries[targetBucket].key = key;
                 entries[targetBucket].value = value;
@@ -412,11 +422,12 @@
                     count++;
                 }
                 entries[index].hashCode = hashCode;
+                entries[index].bucket = targetBucket;
                 entries[index].next = -1;
                 entries[index].key = key;
                 entries[index].value = value;
 
-                entries[last].next = index;
+                entries[prev].next = index;
             }
             else
             {
@@ -434,6 +445,7 @@
                     count++;
                 }
                 entries[index].hashCode = entries[targetBucket].hashCode;
+                entries[index].bucket = entries[targetBucket].bucket;
                 entries[index].next = entries[targetBucket].next;
                 entries[index].key = entries[targetBucket].key;
                 entries[index].value = entries[targetBucket].value;
@@ -441,6 +453,7 @@
                     if (entries[i].next == targetBucket) entries[i].next = index;
 
                 entries[targetBucket].hashCode = hashCode;
+                entries[targetBucket].bucket = targetBucket;
                 entries[targetBucket].next = -1;
                 entries[targetBucket].key = key;
                 entries[targetBucket].value = value;
@@ -532,7 +545,7 @@
         private void Resize(int newSize, bool forceNewHashCodes)
         {
             Contract.Assert(newSize >= entries.Length);
-            Entry[] newEntries = Enumerable.Repeat(new Entry { hashCode = -1, next = -1 }, newSize).ToArray();
+            Entry[] newEntries = Enumerable.Repeat(new Entry { hashCode = -1, bucket = -1, next = -1 }, newSize).ToArray();
             if (forceNewHashCodes)
             {
                 for (int i = 0; i < count; i++)
@@ -557,6 +570,7 @@
                     {
                         //copy元素
                         newEntries[bucket].hashCode = entries[i].hashCode;
+                        newEntries[bucket].bucket = bucket;
                         //newEntries[bucket].next = -1;
                         newEntries[bucket].key = entries[i].key;
                         newEntries[bucket].value = entries[i].value;
@@ -572,19 +586,12 @@
             {
                 if (newEntries[i].hashCode == -1)
                 {
-                    if(freeList == -1)
-                    {
-                        freeList = i;
-                    }
-                    else
-                    {
-                        newEntries[i].next = freeList;
-                        freeList = i;
-                    }
+                    newEntries[i].next = freeList;
+                    freeList = i;
                     freeCount++;
                 }
             }
-            //3.第二次遍历，把所有重复bucket的元素放到空闲位置
+            //3.第二次遍历，把其他所有重复bucket的元素放到空闲位置(优先从freeList开始)
             for (int i = 0; i < count; i++)
             {
                 if (entries[i].hashCode != -1)
@@ -594,7 +601,7 @@
                     if(freeCount > 0)
                     {
                         index = freeList;
-                        freeList = newEntries[i].next;
+                        freeList = newEntries[index].next;
                         freeCount--;
                     }
                     else
@@ -603,13 +610,14 @@
                         maxBucket++;
                     }
 
+                    int bucket = entries[i].hashCode % newSize;
                     //赋值
                     newEntries[index].hashCode = entries[i].hashCode;
+                    newEntries[index].bucket = bucket;
                     newEntries[index].next = -1;
                     newEntries[index].key = entries[i].key;
                     newEntries[index].value = entries[i].value;
-                    //插入到next链表
-                    int bucket = entries[i].hashCode % newSize;
+                    //插入到对应bucket下标entry的next链表中
                     newEntries[index].next = newEntries[bucket].next;
                     newEntries[bucket].next = index;
                 }
@@ -636,27 +644,30 @@
                 {
                     if (entries[i].hashCode == hashCode && comparer.Equals(entries[i].key, key))
                     {
-                        //1.如果是bucket下标被删除的话，要挪一下位置
-                        //2.如果是中间链表某元素被删除，要串接
-                        if (prev < 0)
+                        //1.如果是bucket下标被删除的话，要挪一下位置。即把.next元素(如果有的话) 挪到当前bucket
+                        //2.如果是中间链表某元素被删除，要串接一下前后两个元素
+                        if (prev < 0)//是情况1
                         {
                             int next = entries[i].next;
-                            if (next > 0) //有后继元素，把后继元素放到当前位置，移除后续元素
+                            if (next > 0) //有后继元素，把后继元素放到当前位置，再移除原后继元素位置的内容
                             {
                                 entries[i].hashCode = entries[next].hashCode;
+                                //entries[i].bucket = entries[next].bucket;
                                 entries[i].next = entries[next].next;
                                 entries[i].key = entries[next].key;
                                 entries[i].value = entries[next].value;
 
                                 entries[next].hashCode = -1;
+                                entries[next].bucket = -1;
                                 entries[next].next = freeList;
                                 entries[next].key = default(TKey);
                                 entries[next].value = default(TValue);
                                 freeList = next;
                             }
                             else
-                            { //无后续元素，移除当前
+                            { //无后续元素，只需要移除当前元素即可
                                 entries[i].hashCode = -1;
+                                entries[i].bucket = -1;
                                 entries[i].next = freeList;
                                 entries[i].key = default(TKey);
                                 entries[i].value = default(TValue);
@@ -668,6 +679,7 @@
                             entries[prev].next = entries[i].next;
 
                             entries[i].hashCode = -1;
+                            entries[i].bucket = -1;
                             entries[i].next = freeList;
                             entries[i].key = default(TKey);
                             entries[i].value = default(TValue);

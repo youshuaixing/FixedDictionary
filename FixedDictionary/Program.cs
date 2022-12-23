@@ -14,26 +14,27 @@ namespace FixedDictionary
             //1.增删改查是否正确
             Console.WriteLine("===========================测试用例1===============================");
             FixedDictionary<string, string> fixedDict = new FixedDictionary<string, string>();
-            //for (int i = 0; i < 10000; i++)
-            //{
-            //    fixedDict.Add(i.ToString(), i.ToString());
-            //}
-            //Console.WriteLine($"Count is {fixedDict.Count}");
-            //for(int i = 100; i < 2000; i++)
-            //{
-            //    fixedDict.Remove(i.ToString());
-            //}
-            //Console.WriteLine($"Count is {fixedDict.Count}");
-            //for (int i = 0; i < 10000; i++)
-            //{
-            //    bool isContains = fixedDict.ContainsKey(i.ToString());
-            //}
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 10000; i++)
             {
                 fixedDict.Add(i.ToString(), i.ToString());
             }
             Console.WriteLine($"Count is {fixedDict.Count}");
-            //for (int i = 100; i < 2; i++)
+            for (int i = 100; i < 2000; i++)
+            {
+                fixedDict.Remove(i.ToString());
+            }
+            Console.WriteLine($"Count is {fixedDict.Count}");
+            for (int i = 0; i < 10000; i++)
+            {
+                bool isContains = fixedDict.ContainsKey(i.ToString());
+            }
+
+            //for (int i = 0; i < 30; i++)
+            //{
+            //    fixedDict.Add(i.ToString(), i.ToString());
+            //}
+            //Console.WriteLine($"Count is {fixedDict.Count}");
+            //for (int i = 0; i < 2; i++)
             //{
             //    fixedDict.Remove(i.ToString());
             //}
@@ -41,6 +42,10 @@ namespace FixedDictionary
             //for (int i = 0; i < 10; i++)
             //{
             //    bool isContains = fixedDict.ContainsKey(i.ToString());
+            //    if(isContains)
+            //        Console.WriteLine($"{i.ToString()} is contians.");
+            //    else
+            //        Console.WriteLine($"{i.ToString()} not contians.");
             //}
 
             //2.调用contains的查询效率
@@ -67,29 +72,29 @@ namespace FixedDictionary
 
 
             DateTime start0 = DateTime.Now;
-            //for (int i = testCases.Count - 1; i >= 0; i--)
-            //{
-            //    dic.ContainsKey(testCases[i]);
-            //}
-            //for (int i = testCases.Count - 1; i >= testCases.Count - 10; i--)
-            //{
-            //    dic.ContainsKey(testCases[i]);
-            //}
-            dic.ContainsKey(testCases[1]);
+            for (int i = testCases.Count - 1; i >= 0; i--)
+            {
+                dic.ContainsKey(testCases[i]);
+            }
+            for (int i = testCases.Count - 1; i >= testCases.Count - 10; i--)
+            {
+                dic.ContainsKey(testCases[i]);
+            }
+            //dic.ContainsKey(testCases[1]);
             DateTime end0 = DateTime.Now;
             TimeSpan timeSpan0 = end0 - start0;
-            Console.WriteLine(timeSpan0.TotalMilliseconds);
+            Console.WriteLine($"timeSpan0.TotalMilliseconds : {timeSpan0.TotalMilliseconds}");
 
 
             DateTime start1 = DateTime.Now;
-            tree.ContainsKey(testCases[0]);
-            //for (int i = testCases.Count - 1; i >= 0; i--)
-            //{
-            //    tree.ContainsKey(testCases[i]);
-            //}
+            //tree.ContainsKey(testCases[0]);
+            for (int i = testCases.Count - 1; i >= 0; i--)
+            {
+                tree.ContainsKey(testCases[i]);
+            }
             DateTime end1 = DateTime.Now;
             TimeSpan timeSpan1 = end1 - start1;
-            Console.WriteLine(timeSpan1.TotalMilliseconds);
+            Console.WriteLine($"timeSpan1.TotalMilliseconds: {timeSpan1.TotalMilliseconds}");
             //Console.WriteLine(tree.GetMaxListLength());
 
             Console.ReadLine();
