@@ -13,6 +13,7 @@ namespace FixedDictionary
             //测试用例
             //1.增删改查是否正确
             Console.WriteLine("===========================测试用例1===============================");
+            var sw1 = System.Diagnostics.Stopwatch.StartNew();
             FixedDictionary<string, string> fixedDict = new FixedDictionary<string, string>();
             for (int i = 0; i < 10000; i++)
             {
@@ -28,6 +29,7 @@ namespace FixedDictionary
             {
                 bool isContains = fixedDict.ContainsKey(i.ToString());
             }
+            Console.WriteLine($"测试用例1 时间：spend time is: {(double)sw1.ElapsedMilliseconds / 1000}");
 
             //for (int i = 0; i < 30; i++)
             //{
@@ -50,10 +52,13 @@ namespace FixedDictionary
 
             //2.调用contains的查询效率
             Console.WriteLine("===========================测试用例2===============================");
+            sw1 = System.Diagnostics.Stopwatch.StartNew();
             Random rand = new Random();
             FixedDictionary<uint, short> tree = new FixedDictionary<uint, short>(100000);
             Dictionary<uint, short> dic = new Dictionary<uint, short>(100000);
             List<uint> testCases = new List<uint>();
+            Console.WriteLine($"测试用例2 new：spend time is: {(double)sw1.ElapsedMilliseconds / 1000}");
+            sw1 = System.Diagnostics.Stopwatch.StartNew();
 
             for (int i = 0; i < 100000; i++)
             {
@@ -61,29 +66,32 @@ namespace FixedDictionary
                 testCases.Add(k);
 
             }
+            Console.WriteLine($"测试用例2 testCases.Add：spend time is: {(double)sw1.ElapsedMilliseconds / 1000}");
+            sw1 = System.Diagnostics.Stopwatch.StartNew();
 
             foreach (uint testCase in testCases)
             {
                 if (!dic.ContainsKey(testCase))
                     dic.Add(testCase, 0);
+            }
+            Console.WriteLine($"测试用例2 dic.Add(testCase, 0)：spend time is: {(double)sw1.ElapsedMilliseconds / 1000}");
+            sw1 = System.Diagnostics.Stopwatch.StartNew();
+
+            foreach (uint testCase in testCases)
+            {
                 if (!tree.ContainsKey(testCase))
                     tree.Add(testCase, 0);
             }
+            Console.WriteLine($"测试用例2 tree.Add(testCase, 0)：spend time is: {(double)sw1.ElapsedMilliseconds / 1000}");
+            sw1 = System.Diagnostics.Stopwatch.StartNew();
 
-
-            DateTime start0 = DateTime.Now;
             for (int i = testCases.Count - 1; i >= 0; i--)
             {
                 dic.ContainsKey(testCases[i]);
             }
-            for (int i = testCases.Count - 1; i >= testCases.Count - 10; i--)
-            {
-                dic.ContainsKey(testCases[i]);
-            }
             //dic.ContainsKey(testCases[1]);
-            DateTime end0 = DateTime.Now;
-            TimeSpan timeSpan0 = end0 - start0;
-            Console.WriteLine($"timeSpan0.TotalMilliseconds : {timeSpan0.TotalMilliseconds}");
+            Console.WriteLine($"测试用例2 dic.ContainsKey：spend time is: {(double)sw1.ElapsedMilliseconds / 1000}");
+            sw1 = System.Diagnostics.Stopwatch.StartNew();
 
 
             DateTime start1 = DateTime.Now;
@@ -92,9 +100,8 @@ namespace FixedDictionary
             {
                 tree.ContainsKey(testCases[i]);
             }
-            DateTime end1 = DateTime.Now;
-            TimeSpan timeSpan1 = end1 - start1;
-            Console.WriteLine($"timeSpan1.TotalMilliseconds: {timeSpan1.TotalMilliseconds}");
+            Console.WriteLine($"测试用例2 tree.ContainsKey：spend time is: {(double)sw1.ElapsedMilliseconds / 1000}");
+            sw1 = System.Diagnostics.Stopwatch.StartNew();
             //Console.WriteLine(tree.GetMaxListLength());
 
             Console.ReadLine();
