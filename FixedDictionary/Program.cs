@@ -15,6 +15,7 @@ namespace FixedDictionary
             Console.WriteLine("===========================测试用例1===============================");
             var sw1 = System.Diagnostics.Stopwatch.StartNew();
             FixedDictionary<string, string> fixedDict = new FixedDictionary<string, string>();
+
             for (int i = 0; i < 10000; i++)
             {
                 fixedDict.Add(i.ToString(), i.ToString());
@@ -44,12 +45,13 @@ namespace FixedDictionary
             //for (int i = 0; i < 10; i++)
             //{
             //    bool isContains = fixedDict.ContainsKey(i.ToString());
-            //    if(isContains)
+            //    if (isContains)
             //        Console.WriteLine($"{i.ToString()} is contians.");
             //    else
             //        Console.WriteLine($"{i.ToString()} not contians.");
             //}
 
+        
             //2.调用contains的查询效率
             Console.WriteLine("===========================测试用例2===============================");
             sw1 = System.Diagnostics.Stopwatch.StartNew();
@@ -103,6 +105,7 @@ namespace FixedDictionary
             Console.WriteLine($"测试用例2 tree.ContainsKey：spend time is: {(double)sw1.ElapsedMilliseconds / 1000}");
             sw1 = System.Diagnostics.Stopwatch.StartNew();
             //Console.WriteLine(tree.GetMaxListLength());
+            
 
             Console.ReadLine();
         }

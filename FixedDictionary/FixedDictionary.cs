@@ -26,7 +26,7 @@
         private Entry[] entries;
         private int count;
         private int version;
-        private int freeList;
+        private int freeNode; //从freeList改为freeNode，只维护对一个空节点的引用
         private int freeCount;
         private IEqualityComparer<TKey> comparer;
         private KeyCollection keys;
@@ -205,7 +205,7 @@
             {
                 //Array.Clear(entries, 0, count);
                 for (int i = 0; i < entries.Length; i++)  entries[i].hashCode = entries[i].bucket = entries[i].next = -1;
-                freeList = -1;
+                freeNode = 0;
                 count = 0;
                 freeCount = 0;
                 version++;
@@ -323,7 +323,7 @@
             int size = HashHelpers.GetPrime(capacity);
             entries = Enumerable.Repeat(new Entry { hashCode = -1, bucket = -1, next = -1 }, size).ToArray();
             count = 0;
-            freeList = -1;
+            freeNode = 0;
             freeCount = 0;
         }
 
@@ -368,37 +368,21 @@
             if (entries[targetBucket].hashCode < 0)
             {
                 //1.hashcode为空说明没有元素，此时又分为两种情况
-                //  a.此bucket+1>count，count扩容=bucket+1，同时要更新freeCount和freeList
-                //  b.否则，说明此bucket在freeList链表中，要从freeCount中移除，但是count不用变了
+                //  a.此bucket+1>count，count扩容=bucket+1，同时要更新freeCount和freeNode
+                //  b.否则，说明此bucket在count的范围内，要从freeCount中移除，但是count不用变了，更新下freeNode
                 if(targetBucket+1 > count)
                 {
-                    for(int i = count; i < targetBucket; i++)
-                    {
-                        entries[i].next = freeList;
-                        freeList = i;
-                        freeCount++;
-                    }
+                    freeCount = freeCount + (targetBucket + 1 - count) - 1;
                     count = targetBucket + 1;
                 }
                 else
                 {
-                    int prevFree = -1;//上一个元素
-                    for (int i = freeList; i >= 0; prevFree = i, i = entries[i].next)
+                    if(targetBucket == freeNode)
                     {
-                        if(targetBucket == i)
-                        {
-                            if(prevFree > 0)
-                            {
-                                entries[prevFree].next = entries[i].next;
-                            }
-                            else
-                            {
-                                freeList = entries[i].next;
-                            }
-                            freeCount--;
-                            break;
-                        }
+                        for (int i = freeNode + 1; i < count; i++)
+                            if (entries[i].hashCode == -1) { freeNode = i; break; } 
                     }
+                    freeCount--;
                 }
                 entries[targetBucket].hashCode = hashCode;
                 entries[targetBucket].bucket = targetBucket;
@@ -408,12 +392,13 @@
             }
             else if(entries[targetBucket].hashCode % entries.Length == targetBucket)
             {
-                //2.targetBucket的位置是对的。这个元素放在空闲位置（freeList 或 count），然后令当前Entry.next指向新元素
+                //2.targetBucket的位置是对的。这个元素放在空闲位置（freeNode 或 count），然后令当前Entry.next指向新元素
                 int index = -1;
                 if (freeCount > 0)
                 {
-                    index = freeList;
-                    freeList = entries[index].next;
+                    index = freeNode;
+                    for (int i = freeNode + 1; i < count; i++)
+                        if (entries[i].hashCode == -1) { freeNode = i;  break; }
                     freeCount--;
                 }
                 else
@@ -431,12 +416,13 @@
             }
             else
             {
-                //3.entryBucket不对的元素要挪走到空闲位置（freeList 或 count），再遍历targetBucket元素的拉链，把next的下标改到新的下标
+                //3.entryBucket不对的元素要挪走到空闲位置（freeNode 或 count），再遍历targetBucket元素的拉链，把next的下标改到新的下标
                 int index = -1;
                 if (freeCount > 0)
                 {
-                    index = freeList;
-                    freeList = entries[index].next;
+                    index = freeNode;
+                    for (int i = freeNode + 1; i < count; i++)
+                        if (entries[i].hashCode == -1) { freeNode = i; break; }
                     freeCount--;
                 }
                 else
@@ -545,7 +531,7 @@
         private void Resize(int newSize, bool forceNewHashCodes)
         {
             Contract.Assert(newSize >= entries.Length);
-            Entry[] newEntries = Enumerable.Repeat(new Entry { hashCode = -1, bucket = -1, next = -1 }, newSize).ToArray();
+            Entry[] oldEntries = entries;
             if (forceNewHashCodes)
             {
                 for (int i = 0; i < count; i++)
@@ -557,74 +543,19 @@
                 }
             }
 
-            //两次遍历把所有内容放到正确位置，修改count和freeCount、freeList等
-            //1.第一次遍历，set所有bucket正确的首个元素
-            int maxBucket = -1; //maxBucket会是最终数组的count，虽然中间还会有很多freeCount
-            for (int i = 0; i < count; i++)
-            {
-                if(entries[i].hashCode != -1)
-                {
-                    int bucket = entries[i].hashCode % newSize;
-                    maxBucket = bucket > maxBucket ? bucket : maxBucket;
-                    if (newEntries[bucket].hashCode == -1)
-                    {
-                        //copy元素
-                        newEntries[bucket].hashCode = entries[i].hashCode;
-                        newEntries[bucket].bucket = bucket;
-                        //newEntries[bucket].next = -1;
-                        newEntries[bucket].key = entries[i].key;
-                        newEntries[bucket].value = entries[i].value;
-
-                        entries[i].hashCode = -1; //清空旧元素
-                    }
-                }
-            }
-            //2.检测空元素和空队列，调整 freeList = -1 freeCount
-            freeList = -1;
-            freeCount = 0;
-            for (int i = 0; i <= maxBucket; i++)
-            {
-                if (newEntries[i].hashCode == -1)
-                {
-                    newEntries[i].next = freeList;
-                    freeList = i;
-                    freeCount++;
-                }
-            }
-            //3.第二次遍历，把其他所有重复bucket的元素放到空闲位置(优先从freeList开始)
-            for (int i = 0; i < count; i++)
-            {
-                if (entries[i].hashCode != -1)
-                {
-                    //插入，选择freeList或者是数组后一个
-                    int index = -1;
-                    if(freeCount > 0)
-                    {
-                        index = freeList;
-                        freeList = newEntries[index].next;
-                        freeCount--;
-                    }
-                    else
-                    {
-                        index = maxBucket + 1;
-                        maxBucket++;
-                    }
-
-                    int bucket = entries[i].hashCode % newSize;
-                    //赋值
-                    newEntries[index].hashCode = entries[i].hashCode;
-                    newEntries[index].bucket = bucket;
-                    newEntries[index].next = -1;
-                    newEntries[index].key = entries[i].key;
-                    newEntries[index].value = entries[i].value;
-                    //插入到对应bucket下标entry的next链表中
-                    newEntries[index].next = newEntries[bucket].next;
-                    newEntries[bucket].next = index;
-                }
-            }
-            
+            Entry[] newEntries = Enumerable.Repeat(new Entry { hashCode = -1, bucket = -1, next = -1 }, newSize).ToArray();
             entries = newEntries;
-            count = maxBucket+1;
+            count = 0;
+            freeNode = 0;
+            freeCount = 0;
+
+            for(int i = 0; i < oldEntries.Length; i++)
+            {
+                if (oldEntries[i].hashCode != -1)
+                {
+                    Insert(oldEntries[i].key, oldEntries[i].value, false);
+                }
+            }
             version++;
         }
 
@@ -659,19 +590,21 @@
 
                                 entries[next].hashCode = -1;
                                 entries[next].bucket = -1;
-                                entries[next].next = freeList;
+                                entries[next].next = -1;
                                 entries[next].key = default(TKey);
                                 entries[next].value = default(TValue);
-                                freeList = next;
+
+                                freeNode = next < freeNode ? next : freeNode;
                             }
                             else
                             { //无后续元素，只需要移除当前元素即可
                                 entries[i].hashCode = -1;
                                 entries[i].bucket = -1;
-                                entries[i].next = freeList;
+                                entries[i].next = -1;
                                 entries[i].key = default(TKey);
                                 entries[i].value = default(TValue);
-                                freeList = i;
+
+                                freeNode = i < freeNode ? i : freeNode;
                             }
                         }
                         else
@@ -680,10 +613,11 @@
 
                             entries[i].hashCode = -1;
                             entries[i].bucket = -1;
-                            entries[i].next = freeList;
+                            entries[i].next = -1;
                             entries[i].key = default(TKey);
                             entries[i].value = default(TValue);
-                            freeList = i;
+
+                            freeNode = i < freeNode ? i : freeNode;
                         }
                         freeCount++;
                         version++;
