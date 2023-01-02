@@ -594,7 +594,7 @@
                                 entries[next].key = default(TKey);
                                 entries[next].value = default(TValue);
 
-                                freeNode = next < freeNode ? next : freeNode;
+                                freeNode = (freeCount <= 0) ? next : (next < freeNode ? next : freeNode); //这里有个问题，当freeCount==0时，freeNode也是指向的0
                             }
                             else
                             { //无后续元素，只需要移除当前元素即可
@@ -604,7 +604,7 @@
                                 entries[i].key = default(TKey);
                                 entries[i].value = default(TValue);
 
-                                freeNode = i < freeNode ? i : freeNode;
+                                freeNode = (freeCount <= 0) ? i : (i < freeNode ? i : freeNode);
                             }
                         }
                         else
@@ -617,7 +617,7 @@
                             entries[i].key = default(TKey);
                             entries[i].value = default(TValue);
 
-                            freeNode = i < freeNode ? i : freeNode;
+                            freeNode = (freeCount <= 0) ? i : (i < freeNode ? i : freeNode);
                         }
                         freeCount++;
                         version++;
