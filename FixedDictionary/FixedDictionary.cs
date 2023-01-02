@@ -372,6 +372,7 @@
                 //  b.否则，说明此bucket在count的范围内，要从freeCount中移除，但是count不用变了，更新下freeNode
                 if(targetBucket+1 > count)
                 {
+                    if (freeCount == 0) freeNode = count; //freeCount==0说明之前的freeNode也是错的。这么更新，除非下面的freeCount==0时候是错误的，其他是正确的
                     freeCount = freeCount + (targetBucket + 1 - count) - 1;
                     count = targetBucket + 1;
                 }
