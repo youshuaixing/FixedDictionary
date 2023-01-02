@@ -580,7 +580,7 @@
                         if (prev < 0)//是情况1
                         {
                             int next = entries[i].next;
-                            if (next > 0) //有后继元素，把后继元素放到当前位置，再移除原后继元素位置的内容
+                            if (next >= 0)//if(next != -1) //有后继元素，把后继元素放到当前位置，再移除原后继元素位置的内容
                             {
                                 entries[i].hashCode = entries[next].hashCode;
                                 //entries[i].bucket = entries[next].bucket;
