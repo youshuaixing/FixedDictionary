@@ -344,7 +344,7 @@
             int collisionCount = 0;
 #endif
             // 头节点才查找
-            if (entries[targetBucket].hashCode > 0 && entries[targetBucket].hashCode % entries.Length == targetBucket)
+            if (entries[targetBucket].hashCode >= 0 && entries[targetBucket].hashCode % entries.Length == targetBucket)
             {
                 //  只对头结点进行查找
                 for (int i = targetBucket; i >= 0; i = entries[i].next)
@@ -391,10 +391,10 @@
             entries[freeNode].next = entries[targetBucket].next;
             entries[freeNode].value = entries[targetBucket].value;
 
-            if(entries[targetBucket].hashCode >= 0)
+            //  需要判断被移走的节点是头节点或者错误的节点
+            //  更新next的指向
+            if (entries[targetBucket].hashCode >= 0)
             {
-                //  判断被移走的节点是头节点或者错误的节点
-                //  更新next的指向
                 if (entries[targetBucket].hashCode % entries.Length == targetBucket)
                 {
                     // 被移走的节点是头节点
@@ -403,7 +403,7 @@
                 else
                 {
                     //  被移走的节点是错误的节点
-                    //  从它的头节点开始遍历找前置节点
+                    //  从它的头节点开始遍历找前置节点并更新next
                     for (int i = entries[targetBucket].hashCode % entries.Length; i >= 0; i = entries[i].next)
                     {
                         if (entries[i].next == targetBucket)
@@ -417,7 +417,7 @@
                 }
             }
 
-            if (freeCount == 0)
+             if (freeCount == 0)
             {
                 //  此时freeNode也等于count
                 //  一起加 1 即可
@@ -426,18 +426,18 @@
             else
             {
                 //  三种情况都会占用一个空闲节点
-                //  更新freeNode和freeCount
+                //  同时更新freeCount和freeNode
                 freeCount--;
                 if(freeCount == 0)
                 {
-                    //  特判等于0可以避免遍历
+                    //  特判等于0可以避免一次遍历
                     //  同时可以解决count为entries.Length时，freeNode右边被填满，遍历不到边界的情况
                     freeNode = count;
                 }
-                else
+                else if(entries[freeNode].hashCode>=0)
                 {
-                    //  放心往右边遍历，一定会有空闲节点
-                    for (int i = freeNode + 1; i < count; i++)
+                    //  放置到freeNode的节点非空闲节点的时候，才需要往右遍历
+                    for (int i = freeNode+1; i < count; i++)
                     {
                         if (entries[i].hashCode < 0)
                         {
