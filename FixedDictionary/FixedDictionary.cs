@@ -434,7 +434,7 @@
                     //  同时可以解决count为entries.Length时，freeNode右边被填满，遍历不到边界的情况
                     freeNode = count;
                 }
-                else if(entries[freeNode].hashCode>=0)
+                else if(entries[freeNode].hashCode>=0||targetBucket == freeNode)
                 {
                     //  放置到freeNode的节点非空闲节点的时候，才需要往右遍历
                     for (int i = freeNode+1; i < count; i++)
