@@ -13,6 +13,7 @@
     [System.Runtime.InteropServices.ComVisible(false)]
     public class FixedDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IDictionary, IReadOnlyDictionary<TKey, TValue>, ISerializable, IDeserializationCallback
     {
+        private static readonly int HASHCODE_MASK = 0x7FFFFFFF;
 
         private struct Entry
         {
@@ -204,7 +205,7 @@
             if (count > 0)
             {
                 //Array.Clear(entries, 0, count);
-                for (int i = 0; i < entries.Length; i++)  entries[i].hashCode = entries[i].bucket = entries[i].next = -1;
+                for (int i = 0; i < entries.Length; i++) entries[i].hashCode = entries[i].bucket = entries[i].next = -1;
                 freeNode = 0;
                 count = 0;
                 freeCount = 0;
@@ -278,25 +279,25 @@
         [System.Security.SecurityCritical]  // auto-generated_required
         public virtual void GetObjectData(SerializationInfo info, StreamingContext context)
         {
-//            if (info == null)
-//            {
-//                ThrowHelper.ThrowArgumentNullException(ExceptionArgument.info);
-//            }
-//            info.AddValue(VersionName, version);
+            //            if (info == null)
+            //            {
+            //                ThrowHelper.ThrowArgumentNullException(ExceptionArgument.info);
+            //            }
+            //            info.AddValue(VersionName, version);
 
-//#if FEATURE_RANDOMIZED_STRING_HASHING
-//            info.AddValue(ComparerName, HashHelpers.GetEqualityComparerForSerialization(comparer), typeof(IEqualityComparer<TKey>));
-//#else
-//            info.AddValue(ComparerName, comparer, typeof(IEqualityComparer<TKey>));
-//#endif
+            //#if FEATURE_RANDOMIZED_STRING_HASHING
+            //            info.AddValue(ComparerName, HashHelpers.GetEqualityComparerForSerialization(comparer), typeof(IEqualityComparer<TKey>));
+            //#else
+            //            info.AddValue(ComparerName, comparer, typeof(IEqualityComparer<TKey>));
+            //#endif
 
-//            info.AddValue(HashSizeName, buckets == null ? 0 : buckets.Length); //This is the length of the bucket array.
-//            if (buckets != null)
-//            {
-//                KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[Count];
-//                CopyTo(array, 0);
-//                info.AddValue(KeyValuePairsName, array, typeof(KeyValuePair<TKey, TValue>[]));
-//            }
+            //            info.AddValue(HashSizeName, buckets == null ? 0 : buckets.Length); //This is the length of the bucket array.
+            //            if (buckets != null)
+            //            {
+            //                KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[Count];
+            //                CopyTo(array, 0);
+            //                info.AddValue(KeyValuePairsName, array, typeof(KeyValuePair<TKey, TValue>[]));
+            //            }
         }
 
         private int FindEntry(TKey key)
@@ -308,7 +309,7 @@
 
             if (entries != null)
             {
-                int hashCode = comparer.GetHashCode(key) & 0x7FFFFFFF;
+                int hashCode = comparer.GetHashCode(key) & HASHCODE_MASK;
                 int bucket = hashCode % entries.Length;
                 for (int i = bucket; i >= 0; i = entries[i].next)
                 {
@@ -336,25 +337,28 @@
             }
 
             if (entries == null) Initialize(0);
-            int hashCode = comparer.GetHashCode(key) & 0x7FFFFFFF;
+            int hashCode = comparer.GetHashCode(key) & HASHCODE_MASK;
             int targetBucket = hashCode % entries.Length;
 
 #if FEATURE_RANDOMIZED_STRING_HASHING
             int collisionCount = 0;
 #endif
-            //先尝试找，找不到再插入
-            int prev = -1;//上一个元素
-            for (int i = targetBucket; i >= 0; prev = i, i = entries[i].next)
+            // 头节点才查找
+            if (entries[targetBucket].hashCode >= 0 && entries[targetBucket].hashCode % entries.Length == targetBucket)
             {
-                if (entries[i].hashCode == hashCode && comparer.Equals(entries[i].key, key))
+                //  只对头结点进行查找
+                for (int i = targetBucket; i >= 0; i = entries[i].next)
                 {
-                    if (add)
+                    if (entries[i].hashCode == hashCode && comparer.Equals(entries[i].key, key))
                     {
-                        ThrowHelper.ThrowArgumentException(ExceptionResource.Argument_AddingDuplicate);
+                        if (add)
+                        {
+                            ThrowHelper.ThrowArgumentException(ExceptionResource.Argument_AddingDuplicate);
+                        }
+                        entries[i].value = value;
+                        version++;
+                        return;
                     }
-                    entries[i].value = value;
-                    version++;
-                    return;
                 }
             }
             //要插入 看看是否有空闲位置。没位置先resize
@@ -365,86 +369,89 @@
                 return;
             }
 
-            if (entries[targetBucket].hashCode < 0)
+            if (targetBucket >= count)
             {
-                //1.hashcode为空说明没有元素，此时又分为两种情况
-                //  a.此bucket+1>count，count扩容=bucket+1，同时要更新freeCount和freeNode
-                //  b.否则，说明此bucket在count的范围内，要从freeCount中移除，但是count不用变了，更新下freeNode
-                if(targetBucket+1 > count)
-                {
-                    if (freeCount == 0) freeNode = count; //freeCount==0说明之前的freeNode也是错的。这么更新，除非下面的freeCount==0时候是错误的，其他是正确的
-                    freeCount = freeCount + (targetBucket + 1 - count) - 1;
-                    count = targetBucket + 1;
-                }
-                else
-                {
-                    if(targetBucket == freeNode)
-                    {
-                        for (int i = freeNode + 1; i < count; i++)
-                            if (entries[i].hashCode == -1) { freeNode = i; break; } 
-                    }
-                    freeCount--;
-                }
-                entries[targetBucket].hashCode = hashCode;
-                entries[targetBucket].bucket = targetBucket;
-                entries[targetBucket].next = -1;
-                entries[targetBucket].key = key;
-                entries[targetBucket].value = value;
+                //  如果targetBucket在count的右边或等于count
+                //  就需要更新count和freeCount
+                //  这样就保证在后续插入时，targetBucket在count的左边
+                freeCount = freeCount + (targetBucket - count) + 1;
+                count = targetBucket + 1;
             }
-            else if(entries[targetBucket].hashCode % entries.Length == targetBucket)
+
+            //  这部分就是插入操作的逻辑了
+
+            //  把targetBucket位置的内容移到空闲位置
+            //  被移动的entry可能的情况有
+            //  1. 空闲节点
+            //  2. 头节点
+            //  3. 错误的节点
+            entries[freeNode].hashCode = entries[targetBucket].hashCode;
+            entries[freeNode].bucket = entries[targetBucket].bucket;
+            entries[freeNode].key = entries[targetBucket].key;
+            entries[freeNode].next = entries[targetBucket].next;
+            entries[freeNode].value = entries[targetBucket].value;
+
+            //  需要判断被移走的节点是头节点或者错误的节点
+            //  更新next的指向
+            if (entries[targetBucket].hashCode >= 0)
             {
-                //2.targetBucket的位置是对的。这个元素放在空闲位置（freeNode 或 count），然后令当前Entry.next指向新元素
-                int index = -1;
-                if (freeCount > 0)
+                if (entries[targetBucket].hashCode % entries.Length == targetBucket)
                 {
-                    index = freeNode;
-                    for (int i = freeNode + 1; i < count; i++)
-                        if (entries[i].hashCode == -1) { freeNode = i;  break; }
-                    freeCount--;
+                    // 被移走的节点是头节点
+                    entries[targetBucket].next = freeNode;
                 }
                 else
                 {
-                    index = count;
-                    count++;
+                    //  被移走的节点是错误的节点
+                    //  从它的头节点开始遍历找前置节点并更新next
+                    for (int i = entries[targetBucket].hashCode % entries.Length; i >= 0; i = entries[i].next)
+                    {
+                        if (entries[i].next == targetBucket)
+                        {
+                            entries[i].next = freeNode;
+                            break;
+                        }
+                    }
+                    
+                    entries[targetBucket].next = -1;
                 }
-                entries[index].hashCode = hashCode;
-                entries[index].bucket = targetBucket;
-                entries[index].next = -1;
-                entries[index].key = key;
-                entries[index].value = value;
+            }
 
-                entries[prev].next = index;
+             if (freeCount == 0)
+            {
+                //  此时freeNode也等于count
+                //  一起加 1 即可
+                freeNode = ++count;
             }
             else
             {
-                //3.entryBucket不对的元素要挪走到空闲位置（freeNode 或 count），再遍历targetBucket元素的拉链，把next的下标改到新的下标
-                int index = -1;
-                if (freeCount > 0)
+                //  三种情况都会占用一个空闲节点
+                //  同时更新freeCount和freeNode
+                freeCount--;
+                if(freeCount == 0)
                 {
-                    index = freeNode;
-                    for (int i = freeNode + 1; i < count; i++)
-                        if (entries[i].hashCode == -1) { freeNode = i; break; }
-                    freeCount--;
+                    //  特判等于0可以避免一次遍历
+                    //  同时可以解决count为entries.Length时，freeNode右边被填满，遍历不到边界的情况
+                    freeNode = count;
                 }
-                else
+                else if(entries[freeNode].hashCode>=0||targetBucket == freeNode)
                 {
-                    index = count;
-                    count++;
+                    //  放置到freeNode的节点非空闲节点的时候，才需要往右遍历
+                    for (int i = freeNode+1; i < count; i++)
+                    {
+                        if (entries[i].hashCode < 0)
+                        {
+                            freeNode = i;
+                            break;
+                        }
+                    }
                 }
-                entries[index].hashCode = entries[targetBucket].hashCode;
-                entries[index].bucket = entries[targetBucket].bucket;
-                entries[index].next = entries[targetBucket].next;
-                entries[index].key = entries[targetBucket].key;
-                entries[index].value = entries[targetBucket].value;
-                for (int i = entries[index].hashCode % entries.Length; i >= 0; i = entries[i].next)
-                    if (entries[i].next == targetBucket) entries[i].next = index;
-
-                entries[targetBucket].hashCode = hashCode;
-                entries[targetBucket].bucket = targetBucket;
-                entries[targetBucket].next = -1;
-                entries[targetBucket].key = key;
-                entries[targetBucket].value = value;
             }
+
+            entries[targetBucket].hashCode = hashCode;
+            entries[targetBucket].bucket = targetBucket;
+            entries[targetBucket].key = key;
+            entries[targetBucket].value = value;
             version++;
 
 #if FEATURE_RANDOMIZED_STRING_HASHING
@@ -539,7 +546,7 @@
                 {
                     if (entries[i].hashCode != -1)
                     {
-                        entries[i].hashCode = (comparer.GetHashCode(entries[i].key) & 0x7FFFFFFF);
+                        entries[i].hashCode = (comparer.GetHashCode(entries[i].key) & HASHCODE_MASK);
                     }
                 }
             }
@@ -550,7 +557,7 @@
             freeNode = 0;
             freeCount = 0;
 
-            for(int i = 0; i < oldEntries.Length; i++)
+            for (int i = 0; i < oldEntries.Length; i++)
             {
                 if (oldEntries[i].hashCode != -1)
                 {
@@ -569,7 +576,7 @@
 
             if (entries != null)
             {
-                int hashCode = comparer.GetHashCode(key) & 0x7FFFFFFF;
+                int hashCode = comparer.GetHashCode(key) & HASHCODE_MASK;
                 int bucket = hashCode % entries.Length;
                 int prev = -1;//上一个元素嘛
                 for (int i = bucket; i >= 0; prev = i, i = entries[i].next)
@@ -595,7 +602,7 @@
                                 entries[next].key = default(TKey);
                                 entries[next].value = default(TValue);
 
-                                freeNode = (freeCount <= 0) ? next : (next < freeNode ? next : freeNode); //这里有个问题，当freeCount==0时，freeNode也是指向的0
+                                freeNode = next < freeNode ? next : freeNode; //这里有个问题，当freeCount==0时，freeNode也是指向的0
                             }
                             else
                             { //无后续元素，只需要移除当前元素即可
@@ -618,7 +625,7 @@
                             entries[i].key = default(TKey);
                             entries[i].value = default(TValue);
 
-                            freeNode = (freeCount <= 0) ? i : (i < freeNode ? i : freeNode);
+                            freeNode = i < freeNode ? i : freeNode;
                         }
                         freeCount++;
                         version++;
